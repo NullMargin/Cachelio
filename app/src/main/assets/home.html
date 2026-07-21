@@ -1,0 +1,164 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="color-scheme" content="light dark">
+  <title>Cachelio Home</title>
+  <style>
+    :root {
+      color-scheme: light dark;
+      --background: #f7f8fc;
+      --surface: #ffffff;
+      --text: #1a1b20;
+      --muted: #5f636d;
+      --border: #e1e3eb;
+      --shadow: 0 8px 24px rgba(33, 37, 45, 0.08);
+    }
+
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --background: #111318;
+        --surface: #1b1d23;
+        --text: #e4e2e9;
+        --muted: #c5c6d0;
+        --border: #44464f;
+        --shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
+      }
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      min-height: 100vh;
+      margin: 0;
+      padding: max(32px, env(safe-area-inset-top)) 20px
+        max(32px, env(safe-area-inset-bottom));
+      display: grid;
+      place-items: center;
+      background: var(--background);
+      color: var(--text);
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    main {
+      width: min(100%, 680px);
+    }
+
+    header {
+      margin-bottom: 28px;
+      text-align: center;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: clamp(2rem, 8vw, 3.25rem);
+      letter-spacing: -0.04em;
+    }
+
+    p {
+      margin: 8px 0 0;
+      color: var(--muted);
+      font-size: 1rem;
+    }
+
+    nav {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 14px;
+    }
+
+    a {
+      min-height: 132px;
+      padding: 20px 12px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 14px;
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      background: var(--surface);
+      box-shadow: var(--shadow);
+      color: var(--text);
+      text-decoration: none;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    a:active {
+      transform: scale(0.97);
+    }
+
+    .icon {
+      width: 52px;
+      height: 52px;
+      display: grid;
+      place-items: center;
+      border-radius: 16px;
+      color: #ffffff;
+      font-size: 1.65rem;
+      font-weight: 700;
+    }
+
+    .baidu {
+      background: #315efb;
+    }
+
+    .bing {
+      background: #008373;
+    }
+
+    .google {
+      background: #4285f4;
+    }
+
+    .label {
+      font-size: 1rem;
+      font-weight: 600;
+    }
+
+    @media (max-width: 480px) {
+      nav {
+        grid-template-columns: 1fr;
+      }
+
+      a {
+        min-height: 88px;
+        padding: 16px 20px;
+        flex-direction: row;
+        justify-content: flex-start;
+      }
+
+      .icon {
+        width: 48px;
+        height: 48px;
+        flex: 0 0 auto;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <h1>Cachelio</h1>
+      <p>常用网址 · Quick links</p>
+    </header>
+    <nav aria-label="常用网址">
+      <a href="https://www.baidu.com/">
+        <span class="icon baidu" aria-hidden="true">百</span>
+        <span class="label">Baidu</span>
+      </a>
+      <a href="https://www.bing.com/">
+        <span class="icon bing" aria-hidden="true">B</span>
+        <span class="label">Bing</span>
+      </a>
+      <a href="https://www.google.com/">
+        <span class="icon google" aria-hidden="true">G</span>
+        <span class="label">Google</span>
+      </a>
+    </nav>
+  </main>
+</body>
+</html>

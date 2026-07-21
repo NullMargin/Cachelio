@@ -1,0 +1,83 @@
+name: Cachelio Release APK
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Build and publish release APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    env:
+      SIGNING_KEYSTORE_BASE64: ${{ secrets.SIGNING_KEYSTORE_BASE64 }}
+      SIGNING_STORE_PASSWORD: ${{ secrets.SIGNING_STORE_PASSWORD }}
+      SIGNING_KEY_ALIAS: ${{ secrets.SIGNING_KEY_ALIAS }}
+      SIGNING_KEY_PASSWORD: ${{ secrets.SIGNING_KEY_PASSWORD }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Require signing secrets
+        run: |
+          if [ -z "$SIGNING_KEYSTORE_BASE64" ] || \
+             [ -z "$SIGNING_STORE_PASSWORD" ] || \
+             [ -z "$SIGNING_KEY_ALIAS" ] || \
+             [ -z "$SIGNING_KEY_PASSWORD" ]; then
+            echo "Release builds require SIGNING_KEYSTORE_BASE64, SIGNING_STORE_PASSWORD, SIGNING_KEY_ALIAS, and SIGNING_KEY_PASSWORD."
+            exit 1
+          fi
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Grant execute permission for gradlew
+        run: chmod +x gradlew
+
+      - name: Write local.properties
+        run: echo "sdk.dir=$ANDROID_SDK_ROOT" > local.properties
+
+      - name: Cache Gradle
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', 'gradle/wrapper/gradle-wrapper.properties') }}
+          restore-keys: |
+            ${{ runner.os }}-gradle-
+
+      - name: Decode signing keystore
+        id: signing
+        run: |
+          echo "$SIGNING_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/vbrowser.jks"
+          echo "keystore=$RUNNER_TEMP/vbrowser.jks" >> "$GITHUB_OUTPUT"
+
+      - name: Build release APK
+        env:
+          VBROWSER_KEYSTORE: ${{ steps.signing.outputs.keystore }}
+          VBROWSER_STORE_PASSWORD: ${{ env.SIGNING_STORE_PASSWORD }}
+          VBROWSER_KEY_ALIAS: ${{ env.SIGNING_KEY_ALIAS }}
+          VBROWSER_KEY_PASSWORD: ${{ env.SIGNING_KEY_PASSWORD }}
+        run: ./gradlew :app:assembleRelease --no-daemon --stacktrace
+
+      - name: Prepare release asset
+        run: |
+          APK=$(ls app/build/outputs/apk/release/*.apk)
+          cp "$APK" "cachelio-${{ github.event.release.tag_name }}.apk"
+
+      - name: Upload to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: cachelio-${{ github.event.release.tag_name }}.apk

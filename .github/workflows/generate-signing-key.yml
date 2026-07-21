@@ -1,0 +1,82 @@
+name: Generate signing key
+
+# One-time (manual) helper: generates a self-signed keystore and prints the
+# values you need to paste into repository secrets. Nothing is committed.
+#
+# After running, open the job summary / artifact and create these secrets under
+# Settings -> Secrets and variables -> Actions:
+#   SIGNING_KEYSTORE_BASE64  - contents of vbrowser.jks.base64
+#   SIGNING_STORE_PASSWORD   - the store password you chose below
+#   SIGNING_KEY_ALIAS        - the key alias you chose below
+#   SIGNING_KEY_PASSWORD     - the key password you chose below
+
+on:
+  workflow_dispatch:
+    inputs:
+      store_password:
+        description: "Keystore (store) password"
+        required: true
+        default: "vbrowser"
+      key_alias:
+        description: "Key alias"
+        required: true
+        default: "vbrowser"
+      key_password:
+        description: "Key password"
+        required: true
+        default: "vbrowser"
+
+jobs:
+  generate:
+    name: Generate keystore
+    runs-on: ubuntu-latest
+    steps:
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Generate keystore and base64
+        env:
+          STORE_PASSWORD: ${{ inputs.store_password }}
+          KEY_ALIAS: ${{ inputs.key_alias }}
+          KEY_PASSWORD: ${{ inputs.key_password }}
+        run: |
+          set -euo pipefail
+          mkdir -p out
+          keytool -genkeypair \
+            -alias "$KEY_ALIAS" \
+            -keyalg RSA \
+            -keysize 2048 \
+            -validity 10950 \
+            -storetype PKCS12 \
+            -keystore out/vbrowser.jks \
+            -storepass "$STORE_PASSWORD" \
+            -keypass "$KEY_PASSWORD" \
+            -dname "CN=VBrowser, OU=NullMargin, O=NullMargin, C=US"
+          base64 -w0 out/vbrowser.jks > out/vbrowser.jks.base64
+
+      - name: Write instructions to job summary
+        run: |
+          {
+            echo "## Signing key generated"
+            echo ""
+            echo "Create these repository secrets (Settings -> Secrets and variables -> Actions):"
+            echo ""
+            echo "| Secret | Value |"
+            echo "| --- | --- |"
+            echo "| \`SIGNING_KEYSTORE_BASE64\` | contents of the \`vbrowser.jks.base64\` file in the artifact |"
+            echo "| \`SIGNING_STORE_PASSWORD\` | \`${{ inputs.store_password }}\` |"
+            echo "| \`SIGNING_KEY_ALIAS\` | \`${{ inputs.key_alias }}\` |"
+            echo "| \`SIGNING_KEY_PASSWORD\` | \`${{ inputs.key_password }}\` |"
+            echo ""
+            echo "Download the **signing-key** artifact below to get the keystore and its base64."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload keystore artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: signing-key
+          path: out/**
+          retention-days: 1
