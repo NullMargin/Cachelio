@@ -74,6 +74,24 @@ fun SettingsScreen(
                 checked = prefs.forceWebDarkMode,
                 onChecked = { scope.launch { container.prefs.setForceWebDarkMode(it) } }
             )
+            HorizontalDivider()
+            PrefRow(
+                title = stringResource(R.string.privacy_settings_title),
+                subtitle = stringResource(R.string.privacy_mode_desc),
+                onClick = {
+                    scope.launch {
+                        if (container.privacySession.isUnlocked.value ||
+                            !container.prefs.isPrivacyPasswordSet()
+                        ) {
+                            onOpenPrivacy()
+                        } else {
+                            privacyPassword = ""
+                            privacyPasswordError = false
+                            showPrivacyPassword = true
+                        }
+                    }
+                }
+            )
         }
 
         SettingsSection(title = stringResource(R.string.settings_section_browser)) {
@@ -98,24 +116,6 @@ fun SettingsScreen(
                 subtitle = stringResource(R.string.auto_play_next_desc),
                 checked = prefs.autoPlayNext,
                 onChecked = { scope.launch { container.prefs.setAutoPlayNext(it) } }
-            )
-            HorizontalDivider()
-            PrefRow(
-                title = stringResource(R.string.privacy_mode),
-                subtitle = stringResource(R.string.privacy_mode_desc),
-                onClick = {
-                    scope.launch {
-                        if (container.privacySession.isUnlocked.value ||
-                            !container.prefs.isPrivacyPasswordSet()
-                        ) {
-                            onOpenPrivacy()
-                        } else {
-                            privacyPassword = ""
-                            privacyPasswordError = false
-                            showPrivacyPassword = true
-                        }
-                    }
-                }
             )
         }
 

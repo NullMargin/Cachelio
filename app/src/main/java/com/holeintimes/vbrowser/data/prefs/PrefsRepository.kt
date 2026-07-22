@@ -11,6 +11,7 @@ import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.core.stringSetPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.holeintimes.vbrowser.domain.AppLanguage
+import com.holeintimes.vbrowser.domain.BookmarkEntry
 import com.holeintimes.vbrowser.domain.FilesSort
 import com.holeintimes.vbrowser.domain.HistoryEntry
 import com.holeintimes.vbrowser.domain.UserPreferences
@@ -46,6 +47,7 @@ class PrefsRepository(private val context: Context) {
         val lastPlayedPath = stringPreferencesKey("last_played_path")
         val lastBrightness = floatPreferencesKey("last_brightness")
         val history = stringPreferencesKey("visit_history")
+        val bookmarks = stringPreferencesKey("bookmarks")
         val urlIndex = stringSetPreferencesKey("url_index")
     }
 
@@ -176,6 +178,34 @@ class PrefsRepository(private val context: Context) {
 
     suspend fun clearHistory() {
         context.dataStore.edit { it.remove(Keys.history) }
+    }
+
+    val bookmarks: Flow<List<BookmarkEntry>> = context.dataStore.data.map { p ->
+        val raw = p[Keys.bookmarks] ?: return@map emptyList()
+        runCatching { json.decodeFromString<List<BookmarkEntry>>(raw) }.getOrElse { emptyList() }
+    }
+
+    suspend fun addBookmark(entry: BookmarkEntry) {
+        context.dataStore.edit { prefs ->
+            val current = prefs[Keys.bookmarks]
+                ?.let { runCatching { json.decodeFromString<List<BookmarkEntry>>(it) }.getOrNull() }
+                .orEmpty()
+            val updated = listOf(entry) + current.filterNot {
+                it.url == entry.url && it.isPrivate == entry.isPrivate
+            }
+            prefs[Keys.bookmarks] = json.encodeToString(updated.take(200))
+        }
+    }
+
+    suspend fun removeBookmark(url: String, isPrivate: Boolean) {
+        context.dataStore.edit { prefs ->
+            val current = prefs[Keys.bookmarks]
+                ?.let { runCatching { json.decodeFromString<List<BookmarkEntry>>(it) }.getOrNull() }
+                .orEmpty()
+            prefs[Keys.bookmarks] = json.encodeToString(
+                current.filterNot { it.url == url && it.isPrivate == isPrivate }
+            )
+        }
     }
 
     val downloadedUrls: Flow<Set<String>> = context.dataStore.data.map {

@@ -5,6 +5,7 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.holeintimes.vbrowser.AppContainer
 import com.holeintimes.vbrowser.data.sniff.VideoFormatUtil
+import com.holeintimes.vbrowser.domain.BookmarkEntry
 import com.holeintimes.vbrowser.domain.DetectedVideoInfo
 import com.holeintimes.vbrowser.domain.HistoryEntry
 import com.holeintimes.vbrowser.domain.UserPreferences
@@ -16,7 +17,7 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
-private const val HOME_URL = "file:///android_asset/home.html"
+internal const val HOME_URL = "file:///android_asset/home.html"
 
 data class BrowserUiState(
     val currentUrl: String = HOME_URL,
@@ -29,25 +30,39 @@ data class BrowserUiState(
     val downloadedUrls: Set<String> = emptySet(),
     val prefs: UserPreferences = UserPreferences(),
     val history: List<HistoryEntry> = emptyList(),
+    val bookmarks: List<BookmarkEntry> = emptyList(),
+    val privacyUnlocked: Boolean = false,
     val pendingLoadUrl: String? = null
-)
+) {
+    val visibleBookmarks: List<BookmarkEntry>
+        get() = if (privacyUnlocked) bookmarks else bookmarks.filterNot { it.isPrivate }
+
+    val isCurrentBookmarked: Boolean
+        get() = visibleBookmarks.any { it.url == currentUrl }
+}
 
 class BrowserViewModel(private val container: AppContainer) : ViewModel() {
     private val _ui = MutableStateFlow(BrowserUiState())
 
     val uiState: StateFlow<BrowserUiState> = combine(
-        _ui,
-        container.sniffer.foundList,
-        container.prefs.downloadedUrls,
-        container.prefs.preferences,
-        container.prefs.history
-    ) { ui, found, urls, prefs, history ->
-        ui.copy(
-            found = found,
-            downloadedUrls = urls,
-            prefs = prefs,
-            history = history
-        )
+        combine(
+            _ui,
+            container.sniffer.foundList,
+            container.prefs.downloadedUrls,
+            container.prefs.preferences,
+            container.prefs.history
+        ) { ui, found, urls, prefs, history ->
+            ui.copy(
+                found = found,
+                downloadedUrls = urls,
+                prefs = prefs,
+                history = history
+            )
+        },
+        container.prefs.bookmarks,
+        container.privacySession.isUnlocked
+    ) { ui, bookmarks, unlocked ->
+        ui.copy(bookmarks = bookmarks, privacyUnlocked = unlocked)
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), BrowserUiState())
 
     init {
@@ -176,6 +191,32 @@ class BrowserViewModel(private val container: AppContainer) : ViewModel() {
     }
 
     fun openExternalUrl(url: String) = onUrlSubmitted(url)
+
+    fun toggleBookmark() {
+        val state = uiState.value
+        val url = state.currentUrl
+        if (url.isBlank() || url == HOME_URL) return
+        val existing = state.visibleBookmarks.firstOrNull { it.url == url }
+        viewModelScope.launch {
+            if (existing != null) {
+                container.prefs.removeBookmark(existing.url, existing.isPrivate)
+            } else {
+                container.prefs.addBookmark(
+                    BookmarkEntry(
+                        url = url,
+                        title = state.pageTitle,
+                        isPrivate = state.privacyUnlocked
+                    )
+                )
+            }
+        }
+    }
+
+    fun removeBookmark(entry: BookmarkEntry) {
+        viewModelScope.launch {
+            container.prefs.removeBookmark(entry.url, entry.isPrivate)
+        }
+    }
 
     private fun normalizeUrl(raw: String): String {
         val t = raw.trim()

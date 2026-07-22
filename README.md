@@ -15,9 +15,9 @@
 Cachelio keeps your private library under your control on this device.
 
 - **Hide media** in Files so it stays out of the normal library view
-- **Privacy password** (optional) protects Privacy settings and unlocking hidden files
+- **Privacy password** (optional) protects Privacy settings and unlocking the current session
 - **On-device only** — your password verifier is stored only on this device. There is no cloud account, password reset, or recovery. If you forget it, you must clear the app data
-- **Session unlock** — “Show hidden files” lasts for the current app session only. It locks again when the app process restarts
+- **Session unlock** — lasts for the current app session only and locks again when the app process restarts. While unlocked, hidden files are shown, and bookmarks added while unlocked are only visible until you unlock again. Bookmark toolbar actions stay available when locked; only private bookmark entries are hidden
 
 ## Get the app
 
