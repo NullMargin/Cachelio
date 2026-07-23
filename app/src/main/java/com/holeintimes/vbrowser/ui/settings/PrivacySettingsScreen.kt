@@ -49,6 +49,12 @@ fun PrivacySettingsScreen(
             .verticalScroll(rememberScrollState())
             .padding(16.dp)
     ) {
+        Text(
+            text = stringResource(R.string.privacy_section_session),
+            style = MaterialTheme.typography.titleSmall,
+            color = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.padding(start = 4.dp, bottom = 8.dp)
+        )
         Card(
             modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(12.dp),
@@ -56,40 +62,39 @@ fun PrivacySettingsScreen(
                 containerColor = MaterialTheme.colorScheme.surfaceContainerLow
             )
         ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(16.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Column(modifier = Modifier.weight(1f)) {
+            Column(modifier = Modifier.padding(16.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
                     Text(
                         stringResource(R.string.privacy_session_unlock),
-                        style = MaterialTheme.typography.bodyLarge
+                        style = MaterialTheme.typography.bodyLarge,
+                        modifier = Modifier.weight(1f)
                     )
-                    Text(
-                        stringResource(R.string.privacy_session_unlock_desc),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    Switch(
+                        checked = unlocked,
+                        onCheckedChange = {
+                            if (it) container.privacySession.unlock()
+                            else container.privacySession.lock()
+                        }
                     )
                 }
-                Switch(
-                    checked = unlocked,
-                    onCheckedChange = {
-                        if (it) container.privacySession.unlock()
-                        else container.privacySession.lock()
-                    }
+                Text(
+                    stringResource(R.string.privacy_session_unlock_desc),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 12.dp)
                 )
             }
         }
 
         Text(
-            text = stringResource(R.string.privacy_password_warning),
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(horizontal = 4.dp, vertical = 16.dp)
+            text = stringResource(R.string.privacy_section_password),
+            style = MaterialTheme.typography.titleSmall,
+            color = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.padding(start = 4.dp, top = 20.dp, bottom = 8.dp)
         )
-
         Card(
             modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(12.dp),
@@ -97,18 +102,24 @@ fun PrivacySettingsScreen(
                 containerColor = MaterialTheme.colorScheme.surfaceContainerLow
             )
         ) {
-            TextButton(
-                onClick = { showPasswordEditor = true },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 8.dp, vertical = 4.dp)
-            ) {
+            Column(modifier = Modifier.padding(horizontal = 8.dp, vertical = 8.dp)) {
+                TextButton(
+                    onClick = { showPasswordEditor = true },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(
+                        if (hasPassword) {
+                            stringResource(R.string.change_privacy_password)
+                        } else {
+                            stringResource(R.string.set_privacy_password)
+                        }
+                    )
+                }
                 Text(
-                    if (hasPassword) {
-                        stringResource(R.string.change_privacy_password)
-                    } else {
-                        stringResource(R.string.set_privacy_password)
-                    }
+                    text = stringResource(R.string.privacy_password_warning),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 8.dp)
                 )
             }
         }

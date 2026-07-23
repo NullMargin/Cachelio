@@ -113,3 +113,11 @@ data class HistoryEntry(
     val title: String = "",
     val visitedAt: Long = System.currentTimeMillis()
 )
+
+@Serializable
+data class BookmarkEntry(
+    val url: String,
+    val title: String = "",
+    val addedAt: Long = System.currentTimeMillis(),
+    val isPrivate: Boolean = false
+)

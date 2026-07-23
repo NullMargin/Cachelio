@@ -34,15 +34,20 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.material.icons.filled.Bookmarks
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Done
+import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
-import androidx.compose.material.icons.filled.Done
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Menu
+import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.StarBorder
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Surface
 import com.holeintimes.vbrowser.data.sniff.VideoTitleResolver
-import androidx.compose.material.icons.filled.Download
-import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.HorizontalDivider
@@ -80,6 +85,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.holeintimes.vbrowser.R
 import com.holeintimes.vbrowser.data.media.MediaLibrary
 import com.holeintimes.vbrowser.data.sniff.VideoFormatUtil
+import com.holeintimes.vbrowser.domain.BookmarkEntry
 import com.holeintimes.vbrowser.domain.VideoInfo
 import org.json.JSONArray
 import org.json.JSONObject
@@ -97,6 +103,7 @@ fun BrowserScreen(
     var webView by remember { mutableStateOf<WebView?>(null) }
     var foundExpanded by remember { mutableStateOf(false) }
     var urlEditing by remember { mutableStateOf(false) }
+    var showBookmarks by remember { mutableStateOf(false) }
 
     LaunchedEffect(state.found.size) {
         if (state.found.isNotEmpty() && !foundExpanded) foundExpanded = true
@@ -144,6 +151,25 @@ fun BrowserScreen(
                         }
                         IconButton(onClick = { webView?.reload() }) {
                             Icon(Icons.Default.Refresh, contentDescription = stringResource(R.string.refresh))
+                        }
+                        IconButton(
+                            onClick = { viewModel.toggleBookmark() },
+                            enabled = state.currentUrl.isNotBlank() && state.currentUrl != HOME_URL
+                        ) {
+                            Icon(
+                                imageVector = if (state.isCurrentBookmarked) {
+                                    Icons.Filled.Star
+                                } else {
+                                    Icons.Filled.StarBorder
+                                },
+                                contentDescription = stringResource(R.string.bookmark)
+                            )
+                        }
+                        IconButton(onClick = { showBookmarks = true }) {
+                            Icon(
+                                Icons.Default.Bookmarks,
+                                contentDescription = stringResource(R.string.bookmarks)
+                            )
                         }
                     }
                     BrowserUrlBar(
@@ -222,6 +248,88 @@ fun BrowserScreen(
             }
         }
     }
+
+    if (showBookmarks) {
+        BookmarksDialog(
+            bookmarks = state.visibleBookmarks,
+            onOpen = { entry ->
+                showBookmarks = false
+                viewModel.onUrlSubmitted(entry.url)
+            },
+            onRemove = viewModel::removeBookmark,
+            onDismiss = { showBookmarks = false }
+        )
+    }
+}
+
+@Composable
+private fun BookmarksDialog(
+    bookmarks: List<BookmarkEntry>,
+    onOpen: (BookmarkEntry) -> Unit,
+    onRemove: (BookmarkEntry) -> Unit,
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.bookmarks)) },
+        text = {
+            if (bookmarks.isEmpty()) {
+                Text(
+                    stringResource(R.string.no_bookmarks),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            } else {
+                LazyColumn(modifier = Modifier.heightIn(max = 360.dp)) {
+                    items(bookmarks, key = { "${it.isPrivate}:${it.url}" }) { entry ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { onOpen(entry) }
+                                .padding(vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = entry.title.ifBlank { formatUrlForDisplay(entry.url) },
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                                Text(
+                                    text = formatUrlForDisplay(entry.url),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                            if (entry.isPrivate) {
+                                Icon(
+                                    Icons.Default.Lock,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.padding(horizontal = 4.dp)
+                                )
+                            }
+                            IconButton(onClick = { onRemove(entry) }) {
+                                Icon(
+                                    Icons.Default.Delete,
+                                    contentDescription = stringResource(R.string.remove_bookmark)
+                                )
+                            }
+                        }
+                        HorizontalDivider()
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text(stringResource(R.string.cancel))
+            }
+        }
+    )
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
