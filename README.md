@@ -23,7 +23,7 @@ Cachelio keeps your private library under your control on this device.
 
 Official releases are published on [GitHub Releases](https://github.com/NullMargin/z-grab-browser3/releases) as `cachelio-<tag>.apk` (for example `cachelio-v2.0.3.apk`).
 
-For development builds, install the latest debug APK from the GitHub Actions artifact [`cachelio-debug-apk`](.github/workflows/vbrowser-debug-apk.yml) (workflow: Cachelio Debug APK).
+For development builds, install the latest debug APK from the GitHub Actions artifact `cachelio-debug-apk-<branch>` (workflow: [Cachelio Debug APK](.github/workflows/cachelio-debug-apk.yml)). Pushes to any branch build that branch.
 
 Cachelio uses package id `com.holeintimes.vbrowser`, so it installs as an update over previous VBrowser builds and keeps your existing downloads and settings.
 
@@ -43,6 +43,6 @@ echo "sdk.dir=$HOME/Android/Sdk" > local.properties
 
 Or open the project in Android Studio (Ladybug+) and sync.
 
-CI: [`.github/workflows/vbrowser-debug-apk.yml`](.github/workflows/vbrowser-debug-apk.yml) builds `assembleDebug` on push/PR and `workflow_dispatch`, and uploads `cachelio-debug-apk`. [`.github/workflows/cachelio-release-apk.yml`](.github/workflows/cachelio-release-apk.yml) builds a signed `assembleRelease` APK and attaches it when a GitHub Release is published.
+CI: [`.github/workflows/cachelio-debug-apk.yml`](.github/workflows/cachelio-debug-apk.yml) builds `assembleDebug` on push (any branch), PR, and `workflow_dispatch`, and uploads `cachelio-debug-apk-<branch>`. [`.github/workflows/cachelio-release-apk.yml`](.github/workflows/cachelio-release-apk.yml) builds a signed `assembleRelease` APK and attaches it when a GitHub Release is published.
 
 Reference PRD: [`low-code/docs/BUSINESS_REQUIREMENTS.md`](low-code/docs/BUSINESS_REQUIREMENTS.md)
