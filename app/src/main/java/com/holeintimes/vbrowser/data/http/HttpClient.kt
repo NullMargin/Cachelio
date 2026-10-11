@@ -132,10 +132,15 @@ object HttpClient {
         }
         val contentType = response.header("Content-Type")
             ?: headers.entries.firstOrNull { it.key.equals("Content-Type", true) }?.value?.firstOrNull()
-        val length = response.header("Content-Length")?.toLongOrNull()
-            ?: response.header("Content-Range")
-                ?.substringAfter('/')
-                ?.toLongOrNull()
+        // For 206, Content-Length is the partial body size; prefer Content-Range total.
+        val rangeTotal = response.header("Content-Range")
+            ?.substringAfter('/')
+            ?.trim()
+            ?.takeIf { it != "*" }
+            ?.toLongOrNull()
+            ?.takeIf { it > 0L }
+        val length = rangeTotal
+            ?: response.header("Content-Length")?.toLongOrNull()
         val acceptRanges = response.header("Accept-Ranges")?.contains("bytes", true) == true ||
             response.code == 206
         return HeadResult(
