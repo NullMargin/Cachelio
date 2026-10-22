@@ -122,6 +122,36 @@ fun PlayerScreen(
         player.playWhenReady = true
     }
 
+    // Keep the screen on while playback is active (incl. buffering, so a long
+    // buffer can't let the display sleep mid-stream). Pausing, ending, or
+    // leaving the player clears the flag and restores the system timeout.
+    // FLAG_KEEP_SCREEN_ON needs no WAKE_LOCK permission and is scoped to this
+    // window; the ACTION_SCREEN_OFF receiver below still pauses on power key.
+    DisposableEffect(activity, player) {
+        val window = activity?.window
+        fun updateKeepScreenOn() {
+            val keepOn = player.playWhenReady &&
+                (player.playbackState == Player.STATE_BUFFERING ||
+                    player.playbackState == Player.STATE_READY)
+            if (keepOn) {
+                window?.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+            } else {
+                window?.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+            }
+        }
+        val listener = object : Player.Listener {
+            override fun onEvents(player: Player, events: Player.Events) {
+                updateKeepScreenOn()
+            }
+        }
+        player.addListener(listener)
+        updateKeepScreenOn()
+        onDispose {
+            player.removeListener(listener)
+            window?.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        }
+    }
+
     DisposableEffect(player, mediaPath) {
         val listener = object : Player.Listener {
             override fun onPlaybackStateChanged(playbackState: Int) {
