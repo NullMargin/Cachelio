@@ -37,6 +37,10 @@
     <string name="filter_hint">过滤…</string>
     <string name="url_hint">输入网址</string>
     <string name="no_downloads">暂无下载任务</string>
+    <string name="add_resources">添加资源</string>
+    <string name="add_resources_hint">每行一个网址</string>
+    <string name="add">添加</string>
+    <string name="resources_queued">已加入 %1$d 个下载任务</string>
     <string name="no_files">暂无媒体文件</string>
     <string name="no_found">尚未发现视频</string>
     <string name="about_description">媒体嗅探与离线下载浏览器。自由浏览，自动捕获视频，离线观看。</string>

@@ -37,6 +37,10 @@
     <string name="filter_hint">Filter…</string>
     <string name="url_hint">Enter URL</string>
     <string name="no_downloads">No download tasks</string>
+    <string name="add_resources">Add resources</string>
+    <string name="add_resources_hint">One URL per line</string>
+    <string name="add">Add</string>
+    <string name="resources_queued">Queued %1$d download(s)</string>
     <string name="no_files">No media files</string>
     <string name="no_found">No videos detected yet</string>
     <string name="about_description">A media sniffer and offline download browser. Browse freely, capture videos automatically, and watch offline.</string>

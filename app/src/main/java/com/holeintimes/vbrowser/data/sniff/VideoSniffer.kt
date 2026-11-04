@@ -19,6 +19,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 
@@ -77,7 +78,41 @@ class VideoSniffer(
         _foundList.value = emptyList()
     }
 
+    /**
+     * Probe a URL for media without updating the browser Found list.
+     * Retries on hard failures up to [retryCount], same as the queue workers.
+     */
+    suspend fun probe(detected: DetectedVideoInfo): VideoInfo? = withContext(Dispatchers.IO) {
+        var fail = 0
+        while (fail <= retryCount) {
+            when (val outcome = probeOnce(detected)) {
+                is ProbeOutcome.Success -> return@withContext outcome.info
+                is ProbeOutcome.Rejected -> return@withContext null
+                is ProbeOutcome.HardFail -> fail++
+            }
+        }
+        null
+    }
+
     private fun detect(detected: DetectedVideoInfo): Boolean {
+        return when (val outcome = probeOnce(detected)) {
+            is ProbeOutcome.Success -> {
+                val videoInfo = outcome.info
+                val url = videoInfo.url
+                if (foundMap.putIfAbsent(url, videoInfo) == null) {
+                    pendingOrDone.add(normalizeKey(url))
+                    _foundList.update { listOf(videoInfo) + it.filterNot { v -> v.url == url } }
+                    _newItem.tryEmit(videoInfo)
+                    Log.i(TAG, "found ${videoInfo.videoFormat.name}: $url")
+                }
+                true
+            }
+            is ProbeOutcome.Rejected -> true
+            is ProbeOutcome.HardFail -> false
+        }
+    }
+
+    private fun probeOnce(detected: DetectedVideoInfo): ProbeOutcome {
         return try {
             var url = detected.url
             val extra = HttpClient.ProbeHeaders(
@@ -89,13 +124,14 @@ class VideoSniffer(
             val contentType = head.contentType
             if (contentType.isNullOrBlank() && !VideoFormatUtil.containsVideoExtension(url)) {
                 Log.d(TAG, "no content-type: $url code=${head.code}")
-                return false
+                return ProbeOutcome.HardFail
             }
             val format = VideoFormatUtil.detectVideoFormat(url, contentType) ?: run {
                 Log.d(TAG, "not video: $url type=$contentType")
-                return true
+                return ProbeOutcome.Rejected
             }
-            if (foundMap.containsKey(url)) return true
+
+            foundMap[url]?.let { return ProbeOutcome.Success(it) }
 
             val resolvedTitle = VideoTitleResolver.resolve(
                 mediaUrl = url,
@@ -114,7 +150,7 @@ class VideoSniffer(
                         !VideoFormatUtil.containsVideoExtension(url)
                     ) {
                         Log.d(TAG, "reject non-m3u8 body: $url")
-                        return true
+                        return ProbeOutcome.Rejected
                     }
                 }
                 VideoInfo(
@@ -135,20 +171,21 @@ class VideoSniffer(
                     sourcePageTitle = resolvedTitle
                 )
             }
-            foundMap[url] = videoInfo
-            pendingOrDone.add(normalizeKey(url))
-            _foundList.update { listOf(videoInfo) + it.filterNot { v -> v.url == url } }
-            _newItem.tryEmit(videoInfo)
-            Log.i(TAG, "found ${format.name}: $url")
-            true
+            ProbeOutcome.Success(videoInfo)
         } catch (e: Exception) {
             Log.d(TAG, "detect fail ${detected.url}: ${e.message}")
-            false
+            ProbeOutcome.HardFail
         }
     }
 
     private fun normalizeKey(url: String): String =
         url.substringBefore('#').trim().lowercase()
+
+    private sealed class ProbeOutcome {
+        data class Success(val info: VideoInfo) : ProbeOutcome()
+        data object Rejected : ProbeOutcome()
+        data object HardFail : ProbeOutcome()
+    }
 
     companion object {
         private const val TAG = "VideoSniffer"
