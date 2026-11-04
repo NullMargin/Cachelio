@@ -50,6 +50,10 @@ import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.launch
+import java.net.URL
+import java.net.URLDecoder
+import java.nio.charset.StandardCharsets
+import java.util.UUID
 
 data class AddResourcesResult(val queued: Int, val skipped: Int)
 
@@ -82,7 +86,9 @@ class DownloadsViewModel(private val container: AppContainer) : ViewModel() {
                     )
                 )
                 if (info != null) {
-                    container.downloadManager.addFromVideo(info)
+                    container.downloadManager.addFromVideo(
+                        info.copy(fileName = fileNameForManualResource(info.url))
+                    )
                     queued++
                 } else {
                     skipped++
@@ -113,6 +119,45 @@ internal fun parseResourceUrls(raw: String): List<String> {
         .distinct()
         .toList()
 }
+
+/**
+ * Directory name for a manually pasted resource: path base + query parameter values.
+ * Falls back to a UUID when nothing usable can be derived.
+ */
+internal fun fileNameForManualResource(url: String): String {
+    val fallback = UUID.randomUUID().toString().replace("-", "")
+    return try {
+        val u = URL(url)
+        val pathSegment = u.path.trim('/').substringAfterLast('/')
+        val pathBase = sanitizeFileNamePart(
+            URLDecoder.decode(pathSegment, StandardCharsets.UTF_8.name())
+                .substringBeforeLast('.')
+        )
+        val queryValues = u.query
+            ?.split('&')
+            ?.mapNotNull { pair ->
+                val rawValue = pair.substringAfter('=', missingDelimiterValue = "")
+                if (rawValue.isEmpty()) return@mapNotNull null
+                sanitizeFileNamePart(
+                    URLDecoder.decode(rawValue, StandardCharsets.UTF_8.name())
+                ).takeIf { it.isNotBlank() }
+            }
+            .orEmpty()
+        val readable = buildList {
+            if (pathBase.isNotBlank()) add(pathBase)
+            addAll(queryValues)
+        }.joinToString("_").take(160)
+        readable.ifBlank { fallback }
+    } catch (_: Exception) {
+        fallback
+    }
+}
+
+private fun sanitizeFileNamePart(raw: String): String =
+    raw.replace(Regex("[\\\\/:*?\"<>|\\s]+"), "_")
+        .replace(Regex("_+"), "_")
+        .trim('_')
+        .take(48)
 
 @Composable
 fun DownloadsScreen(
