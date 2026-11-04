@@ -10,7 +10,8 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
-import androidx.compose.foundation.gestures.detectVerticalDragGestures
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -34,21 +35,27 @@ import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
 import com.holeintimes.vbrowser.AppContainer
 import com.holeintimes.vbrowser.data.media.PlaylistOrder
+import kotlin.math.abs
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
@@ -66,6 +73,7 @@ fun PlayerScreen(
 ) {
     val context = LocalContext.current
     val activity = context as? Activity
+    val lifecycleOwner = LocalLifecycleOwner.current
     val scope = rememberCoroutineScope()
     val packageDir = remember(mediaPath) { File(mediaPath) }
     val isM3u8 = File(packageDir, "index.m3u8").exists()
@@ -74,6 +82,8 @@ fun PlayerScreen(
         ExoPlayer.Builder(context).build()
     }
 
+    var playerView by remember { mutableStateOf<PlayerView?>(null) }
+    val latestPlayerView = rememberUpdatedState(playerView)
     var brightness by remember { mutableFloatStateOf(0.5f) }
     var showBrightnessHud by remember { mutableStateOf(false) }
     val advancedToNext = remember(mediaPath) { java.util.concurrent.atomic.AtomicBoolean(false) }
@@ -176,6 +186,19 @@ fun PlayerScreen(
         onDispose { player.removeListener(listener) }
     }
 
+    // Pause when the app leaves the foreground (Home, Recents, another app).
+    // Do not auto-resume — user must press play. Screen-off also pauses via
+    // the receiver below; both paths are idempotent.
+    DisposableEffect(lifecycleOwner, player) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_PAUSE) {
+                player.pause()
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
     DisposableEffect(Unit) {
         val receiver = object : BroadcastReceiver() {
             override fun onReceive(ctx: Context?, intent: Intent?) {
@@ -228,20 +251,52 @@ fun PlayerScreen(
                 PlayerView(ctx).apply {
                     this.player = player
                     useController = true
+                    playerView = this
                 }
             },
-            update = { it.player = player }
+            update = {
+                it.player = player
+                playerView = it
+            }
         )
 
-        // Left-edge brightness zone — avoids conflicting with ExoPlayer seek/volume gestures.
+        // Left-edge zone: vertical drag adjusts brightness; tap toggles Media3
+        // controls (this overlay would otherwise eat taps meant for PlayerView).
         Box(
             modifier = Modifier
                 .align(Alignment.CenterStart)
                 .fillMaxHeight()
                 .width(48.dp)
                 .pointerInput(Unit) {
-                    detectVerticalDragGestures { _, dragAmount ->
-                        applyBrightness(brightness - dragAmount / 600f)
+                    awaitEachGesture {
+                        val down = awaitFirstDown(requireUnconsumed = false)
+                        var totalDragY = 0f
+                        var dragged = false
+                        while (true) {
+                            val event = awaitPointerEvent()
+                            val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                            if (!change.pressed) {
+                                if (!dragged) {
+                                    latestPlayerView.value?.let { view ->
+                                        if (view.isControllerFullyVisible) {
+                                            view.hideController()
+                                        } else {
+                                            view.showController()
+                                        }
+                                    }
+                                }
+                                break
+                            }
+                            val dy = change.positionChange().y
+                            totalDragY += dy
+                            if (!dragged && abs(totalDragY) > viewConfiguration.touchSlop) {
+                                dragged = true
+                            }
+                            if (dragged) {
+                                change.consume()
+                                applyBrightness(brightness - dy / 600f)
+                            }
+                        }
                     }
                 }
         )
