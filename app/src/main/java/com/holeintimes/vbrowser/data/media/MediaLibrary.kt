@@ -50,7 +50,9 @@ class MediaLibrary(
                 sizeBytes = dirSize(dir),
                 sourceUrl = sourceUrl,
                 isHidden = hidden,
-                lastModified = dir.lastModified()
+                // Ignore resume/privacy sidecars — writing them bumps dir mtime and
+                // would reshuffle date order mid auto-play-next.
+                lastModified = packageSortTime(dir)
             )
         }
         _items.value = result.sortedByDescending { it.lastModified }
@@ -128,6 +130,23 @@ class MediaLibrary(
     }
 
     companion object {
+        const val PLAYBACK_POSITION_FILE = "playback_position.txt"
+
+        /** Stable date-sort key: newest content file, excluding play/privacy sidecars. */
+        fun packageSortTime(dir: File): Long {
+            val children = dir.listFiles() ?: return dir.lastModified()
+            var newest = 0L
+            for (child in children) {
+                if (!child.isFile) continue
+                when (child.name) {
+                    PLAYBACK_POSITION_FILE, ".hidden" -> continue
+                }
+                val t = child.lastModified()
+                if (t > newest) newest = t
+            }
+            return if (newest > 0L) newest else dir.lastModified()
+        }
+
         fun formatBytes(bytes: Long): String {
             if (bytes < 1024) return "$bytes B"
             val kb = bytes / 1024.0

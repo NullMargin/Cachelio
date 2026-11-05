@@ -54,6 +54,7 @@ import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
 import com.holeintimes.vbrowser.AppContainer
+import com.holeintimes.vbrowser.data.media.MediaLibrary
 import com.holeintimes.vbrowser.data.media.PlaylistOrder
 import kotlin.math.abs
 import kotlinx.coroutines.Dispatchers
@@ -124,7 +125,7 @@ fun PlayerScreen(
                 ?: return@LaunchedEffect
             video.toURI().toString()
         }
-        val positionFile = File(packageDir, "playback_position.txt")
+        val positionFile = File(packageDir, MediaLibrary.PLAYBACK_POSITION_FILE)
         val startPos = positionFile.takeIf { it.exists() }?.readText()?.toLongOrNull() ?: 0L
         player.setMediaItem(MediaItem.fromUri(playUrl))
         player.prepare()
@@ -170,7 +171,8 @@ fun PlayerScreen(
                 scope.launch {
                     val prefs = container.prefs.preferences.first()
                     if (!prefs.autoPlayNext) return@launch
-                    // Keep the library visibility aligned with the Files page session.
+                    // Same filter/sort as Files; refresh so deleted/hidden items drop out
+                    // without reshuffling date order (see MediaLibrary.packageSortTime).
                     container.mediaLibrary.refresh(container.privacySession.isUnlocked.value)
                     val next = PlaylistOrder.nextAfter(
                         currentPath = mediaPath,
@@ -215,7 +217,13 @@ fun PlayerScreen(
         )
         onDispose {
             runCatching {
-                File(packageDir, "playback_position.txt").writeText(player.currentPosition.toString())
+                // Finished items restart at 0 so auto-play-next doesn't instantly re-skip them.
+                val pos = if (player.playbackState == Player.STATE_ENDED) {
+                    0L
+                } else {
+                    player.currentPosition
+                }
+                File(packageDir, MediaLibrary.PLAYBACK_POSITION_FILE).writeText(pos.toString())
             }
             activity?.window?.let { window ->
                 val lp = window.attributes
