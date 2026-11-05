@@ -41,6 +41,10 @@
     <string name="add_resources_hint">每行一个网址</string>
     <string name="add">添加</string>
     <string name="resources_queued">已加入 %1$d 个下载任务</string>
+    <string name="expand_links">展开链接</string>
+    <string name="expand_links_help_cd">链接展开说明</string>
+    <string name="expand_links_help_title">链接展开</string>
+    <string name="expand_links_help">使用 [起始-结束] 在网址中展开数字区间。\n\n输入：\nvideo[0-9].mp4\n\n输出：\nvideo0.mp4\nvideo1.mp4\n…\nvideo9.mp4\n\n补零位数跟随起始数字（例如 part[01-03].ts → part01.ts、part02.ts、part03.ts）。同一行中的多个区间都会展开。</string>
     <string name="no_files">暂无媒体文件</string>
     <string name="no_found">尚未发现视频</string>
     <string name="about_description">媒体嗅探与离线下载浏览器。自由浏览，自动捕获视频，离线观看。</string>
@@ -74,6 +78,7 @@
     <string name="passwords_do_not_match">两次输入的密码不一致</string>
     <string name="unlock">解锁</string>
     <string name="save">保存</string>
+    <string name="ok">确定</string>
     <string name="cancel">取消</string>
     <string name="hidden">已隐藏</string>
     <string name="unhide">取消隐藏</string>

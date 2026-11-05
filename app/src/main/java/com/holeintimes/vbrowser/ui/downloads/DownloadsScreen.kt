@@ -11,17 +11,24 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.outlined.HelpOutline
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -68,8 +75,8 @@ class DownloadsViewModel(private val container: AppContainer) : ViewModel() {
     fun retry(id: String) = container.downloadManager.retry(id)
     fun stop(id: String) = container.downloadManager.stop(id)
 
-    fun addResources(raw: String) {
-        val urls = parseResourceUrls(raw)
+    fun addResources(raw: String, expandLinks: Boolean = false) {
+        val urls = parseResourceUrls(raw, expandLinks = expandLinks)
         if (urls.isEmpty()) {
             _addResult.tryEmit(AddResourcesResult(queued = 0, skipped = 0))
             return
@@ -106,19 +113,49 @@ class DownloadsViewModel(private val container: AppContainer) : ViewModel() {
     }
 }
 
-internal fun parseResourceUrls(raw: String): List<String> {
+internal fun parseResourceUrls(raw: String, expandLinks: Boolean = false): List<String> {
     return raw.lineSequence()
         .map { it.trim() }
         .filter { it.isNotEmpty() }
-        .mapNotNull { line ->
-            when {
-                line.startsWith("http://") || line.startsWith("https://") -> line
-                line.contains('.') && !line.contains(' ') -> "https://$line"
-                else -> null
+        .flatMap { line ->
+            val expanded = if (expandLinks) expandLinkRanges(line) else listOf(line)
+            expanded.mapNotNull { candidate ->
+                when {
+                    candidate.startsWith("http://") || candidate.startsWith("https://") -> candidate
+                    candidate.contains('.') && !candidate.contains(' ') -> "https://$candidate"
+                    else -> null
+                }
             }
         }
         .distinct()
         .toList()
+}
+
+private val numericRangePattern = Regex("""\[(\d+)-(\d+)]""")
+private const val maxExpandedLinks = 500
+
+/**
+ * Expands numeric ranges like `video[0-9].mp4` or `part[01-03].ts`.
+ * Zero-pads to the width of the start token. Multiple ranges expand in order (cartesian).
+ */
+internal fun expandLinkRanges(input: String): List<String> {
+    val match = numericRangePattern.find(input) ?: return listOf(input)
+    val startToken = match.groupValues[1]
+    val endToken = match.groupValues[2]
+    val start = startToken.toIntOrNull() ?: return listOf(input)
+    val end = endToken.toIntOrNull() ?: return listOf(input)
+    if (start > end) return listOf(input)
+    val count = end - start + 1
+    if (count > maxExpandedLinks) return listOf(input)
+    val width = startToken.length
+    val prefix = input.substring(0, match.range.first)
+    val suffix = input.substring(match.range.last + 1)
+    val step = (start..end).map { n ->
+        prefix + n.toString().padStart(width, '0') + suffix
+    }
+    // Expand further ranges in the suffix (applied after this substitution).
+    val result = step.flatMap { expandLinkRanges(it) }
+    return if (result.size > maxExpandedLinks) result.take(maxExpandedLinks) else result
 }
 
 /**
@@ -169,7 +206,9 @@ fun DownloadsScreen(
     val tasks by vm.tasks.collectAsStateWithLifecycle()
     val context = LocalContext.current
     var showAddDialog by remember { mutableStateOf(false) }
+    var showExpandHelp by remember { mutableStateOf(false) }
     var draft by remember { mutableStateOf("") }
+    var expandLinks by remember { mutableStateOf(false) }
 
     LaunchedEffect(vm) {
         vm.addResult.collect { result ->
@@ -208,6 +247,7 @@ fun DownloadsScreen(
         FloatingActionButton(
             onClick = {
                 draft = ""
+                expandLinks = false
                 showAddDialog = true
             },
             modifier = Modifier
@@ -223,24 +263,55 @@ fun DownloadsScreen(
             onDismissRequest = { showAddDialog = false },
             title = { Text(stringResource(R.string.add_resources)) },
             text = {
-                OutlinedTextField(
-                    value = draft,
-                    onValueChange = { draft = it },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .heightIn(min = 140.dp),
-                    placeholder = { Text(stringResource(R.string.add_resources_hint)) },
-                    minLines = 5,
-                    maxLines = 12
-                )
+                Column {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = stringResource(R.string.expand_links),
+                            style = MaterialTheme.typography.bodyMedium,
+                            modifier = Modifier.weight(1f)
+                        )
+                        IconButton(
+                            onClick = { showExpandHelp = true },
+                            modifier = Modifier.size(32.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Outlined.HelpOutline,
+                                contentDescription = stringResource(R.string.expand_links_help_cd),
+                                modifier = Modifier.size(18.dp),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Switch(
+                            checked = expandLinks,
+                            onCheckedChange = { expandLinks = it }
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(8.dp))
+                    OutlinedTextField(
+                        value = draft,
+                        onValueChange = { draft = it },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(min = 140.dp),
+                        placeholder = { Text(stringResource(R.string.add_resources_hint)) },
+                        minLines = 5,
+                        maxLines = 12
+                    )
+                }
             },
             confirmButton = {
                 TextButton(
                     onClick = {
                         val text = draft
+                        val expand = expandLinks
                         showAddDialog = false
                         draft = ""
-                        vm.addResources(text)
+                        expandLinks = false
+                        vm.addResources(text, expandLinks = expand)
                     },
                     enabled = draft.isNotBlank()
                 ) {
@@ -250,6 +321,24 @@ fun DownloadsScreen(
             dismissButton = {
                 TextButton(onClick = { showAddDialog = false }) {
                     Text(stringResource(R.string.cancel))
+                }
+            }
+        )
+    }
+
+    if (showExpandHelp) {
+        AlertDialog(
+            onDismissRequest = { showExpandHelp = false },
+            title = { Text(stringResource(R.string.expand_links_help_title)) },
+            text = {
+                Text(
+                    text = stringResource(R.string.expand_links_help),
+                    modifier = Modifier.verticalScroll(rememberScrollState())
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = { showExpandHelp = false }) {
+                    Text(stringResource(R.string.ok))
                 }
             }
         )

@@ -41,6 +41,10 @@
     <string name="add_resources_hint">One URL per line</string>
     <string name="add">Add</string>
     <string name="resources_queued">Queued %1$d download(s)</string>
+    <string name="expand_links">Expand links</string>
+    <string name="expand_links_help_cd">Link expansion help</string>
+    <string name="expand_links_help_title">Link expansion</string>
+    <string name="expand_links_help">Use [start-end] to expand a numeric range in a URL.\n\nInput:\nvideo[0-9].mp4\n\nOutput:\nvideo0.mp4\nvideo1.mp4\n…\nvideo9.mp4\n\nZero-padding follows the start number (e.g. part[01-03].ts → part01.ts, part02.ts, part03.ts). Multiple ranges in one line are all expanded.</string>
     <string name="no_files">No media files</string>
     <string name="no_found">No videos detected yet</string>
     <string name="about_description">A media sniffer and offline download browser. Browse freely, capture videos automatically, and watch offline.</string>
@@ -73,6 +77,7 @@
     <string name="passwords_do_not_match">Passwords do not match</string>
     <string name="unlock">Unlock</string>
     <string name="save">Save</string>
+    <string name="ok">OK</string>
     <string name="cancel">Cancel</string>
     <string name="hidden">Hidden</string>
     <string name="unhide">Unhide</string>
