@@ -86,8 +86,9 @@ class DownloadsViewModel(private val container: AppContainer) : ViewModel() {
                     )
                 )
                 if (info != null) {
+                    val name = fileNameForManualResource(info.url)
                     container.downloadManager.addFromVideo(
-                        info.copy(fileName = fileNameForManualResource(info.url))
+                        info.copy(fileName = name, sourcePageTitle = name)
                     )
                     queued++
                 } else {
@@ -121,7 +122,7 @@ internal fun parseResourceUrls(raw: String): List<String> {
 }
 
 /**
- * Directory name for a manually pasted resource: path base + query parameter values.
+ * File/display name for a manually pasted resource: path base + query parameter values.
  * Falls back to a UUID when nothing usable can be derived.
  */
 internal fun fileNameForManualResource(url: String): String {
