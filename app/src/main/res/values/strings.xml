@@ -41,6 +41,14 @@
     <string name="add_resources_hint">One URL per line</string>
     <string name="add">Add</string>
     <string name="resources_queued">Queued %1$d download(s)</string>
+    <string name="intake_title">Adding resources</string>
+    <string name="intake_summary">%1$d checking · %2$d queued · %3$d failed</string>
+    <string name="intake_status_waiting">Waiting</string>
+    <string name="intake_status_probing">Checking</string>
+    <string name="intake_status_queued">Queued</string>
+    <string name="intake_status_failed">Failed</string>
+    <string name="intake_retry_failed">Retry failed</string>
+    <string name="intake_clear">Clear</string>
     <string name="expand_links">Expand links</string>
     <string name="expand_links_help_cd">Link expansion help</string>
     <string name="expand_links_help_title">Link expansion</string>

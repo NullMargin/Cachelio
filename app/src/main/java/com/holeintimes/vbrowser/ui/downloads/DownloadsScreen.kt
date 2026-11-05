@@ -1,6 +1,6 @@
 package com.holeintimes.vbrowser.ui.downloads
 
-import android.widget.Toast
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -19,6 +19,8 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.ExpandLess
+import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.outlined.HelpOutline
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
@@ -32,14 +34,12 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -53,22 +53,52 @@ import com.holeintimes.vbrowser.R
 import com.holeintimes.vbrowser.data.media.MediaLibrary
 import com.holeintimes.vbrowser.domain.DetectedVideoInfo
 import com.holeintimes.vbrowser.domain.DownloadTask
-import kotlinx.coroutines.flow.MutableSharedFlow
-import kotlinx.coroutines.flow.SharedFlow
-import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import java.net.URL
 import java.net.URLDecoder
 import java.nio.charset.StandardCharsets
 import java.util.UUID
 
-data class AddResourcesResult(val queued: Int, val skipped: Int)
+enum class IntakeStatus {
+    Waiting,
+    Probing,
+    Queued,
+    Failed
+}
+
+data class IntakeItem(
+    val id: String,
+    val url: String,
+    val status: IntakeStatus,
+    val displayName: String? = null
+)
+
+data class IntakeStats(
+    val waiting: Int = 0,
+    val probing: Int = 0,
+    val queued: Int = 0,
+    val failed: Int = 0
+) {
+    val total: Int get() = waiting + probing + queued + failed
+    val checking: Int get() = waiting + probing
+    val hasFailed: Boolean get() = failed > 0
+}
 
 class DownloadsViewModel(private val container: AppContainer) : ViewModel() {
     val tasks = container.downloadManager.tasksFlow
 
-    private val _addResult = MutableSharedFlow<AddResourcesResult>(extraBufferCapacity = 1)
-    val addResult: SharedFlow<AddResourcesResult> = _addResult.asSharedFlow()
+    private val _intakeItems = MutableStateFlow<List<IntakeItem>>(emptyList())
+    val intakeItems: StateFlow<List<IntakeItem>> = _intakeItems.asStateFlow()
+
+    private var intakeJob: Job? = null
 
     fun pause(id: String) = container.downloadManager.pause(id)
     fun resume(id: String) = container.downloadManager.resume(id)
@@ -77,32 +107,90 @@ class DownloadsViewModel(private val container: AppContainer) : ViewModel() {
 
     fun addResources(raw: String, expandLinks: Boolean = false) {
         val urls = parseResourceUrls(raw, expandLinks = expandLinks)
-        if (urls.isEmpty()) {
-            _addResult.tryEmit(AddResourcesResult(queued = 0, skipped = 0))
-            return
+        if (urls.isEmpty()) return
+        val newItems = urls.map { url ->
+            IntakeItem(
+                id = UUID.randomUUID().toString().replace("-", ""),
+                url = url,
+                status = IntakeStatus.Waiting
+            )
         }
-        viewModelScope.launch {
-            var queued = 0
-            var skipped = 0
-            for (url in urls) {
-                val info = container.sniffer.probe(
-                    DetectedVideoInfo(
-                        url = url,
-                        sourcePageUrl = url,
-                        sourcePageTitle = ""
-                    )
-                )
-                if (info != null) {
-                    val name = fileNameForManualResource(info.url)
-                    container.downloadManager.addFromVideo(
-                        info.copy(fileName = name, sourcePageTitle = name)
-                    )
-                    queued++
+        _intakeItems.update { it + newItems }
+        ensureIntakeWorker()
+    }
+
+    fun retryFailed() {
+        var changed = false
+        _intakeItems.update { list ->
+            list.map { item ->
+                if (item.status == IntakeStatus.Failed) {
+                    changed = true
+                    item.copy(status = IntakeStatus.Waiting, displayName = null)
                 } else {
-                    skipped++
+                    item
                 }
             }
-            _addResult.emit(AddResourcesResult(queued = queued, skipped = skipped))
+        }
+        if (changed) ensureIntakeWorker()
+    }
+
+    fun clearIntake() {
+        intakeJob?.cancel()
+        intakeJob = null
+        _intakeItems.value = emptyList()
+    }
+
+    private fun ensureIntakeWorker() {
+        if (intakeJob?.isActive == true) return
+        intakeJob = viewModelScope.launch {
+            while (isActive) {
+                val next = _intakeItems.value.firstOrNull { it.status == IntakeStatus.Waiting }
+                    ?: break
+                updateIntake(next.id) { it.copy(status = IntakeStatus.Probing) }
+                try {
+                    ensureActive()
+                    val info = container.sniffer.probe(
+                        DetectedVideoInfo(
+                            url = next.url,
+                            sourcePageUrl = next.url,
+                            sourcePageTitle = ""
+                        )
+                    )
+                    ensureActive()
+                    if (info != null) {
+                        val name = fileNameForManualResource(info.url)
+                        container.downloadManager.addFromVideo(
+                            info.copy(fileName = name, sourcePageTitle = name)
+                        )
+                        updateIntake(next.id) {
+                            it.copy(status = IntakeStatus.Queued, displayName = name)
+                        }
+                    } else {
+                        updateIntake(next.id) { it.copy(status = IntakeStatus.Failed) }
+                    }
+                } catch (e: CancellationException) {
+                    updateIntake(next.id) {
+                        if (it.status == IntakeStatus.Probing) {
+                            it.copy(status = IntakeStatus.Failed)
+                        } else {
+                            it
+                        }
+                    }
+                    throw e
+                } catch (_: Exception) {
+                    updateIntake(next.id) { it.copy(status = IntakeStatus.Failed) }
+                }
+            }
+        }.also { job ->
+            job.invokeOnCompletion {
+                if (intakeJob === job) intakeJob = null
+            }
+        }
+    }
+
+    private fun updateIntake(id: String, transform: (IntakeItem) -> IntakeItem) {
+        _intakeItems.update { list ->
+            list.map { if (it.id == id) transform(it) else it }
         }
     }
 
@@ -111,6 +199,22 @@ class DownloadsViewModel(private val container: AppContainer) : ViewModel() {
         override fun <T : ViewModel> create(modelClass: Class<T>): T =
             DownloadsViewModel(container) as T
     }
+}
+
+internal fun intakeStats(items: List<IntakeItem>): IntakeStats {
+    var waiting = 0
+    var probing = 0
+    var queued = 0
+    var failed = 0
+    for (item in items) {
+        when (item.status) {
+            IntakeStatus.Waiting -> waiting++
+            IntakeStatus.Probing -> probing++
+            IntakeStatus.Queued -> queued++
+            IntakeStatus.Failed -> failed++
+        }
+    }
+    return IntakeStats(waiting, probing, queued, failed)
 }
 
 internal fun parseResourceUrls(raw: String, expandLinks: Boolean = false): List<String> {
@@ -153,7 +257,6 @@ internal fun expandLinkRanges(input: String): List<String> {
     val step = (start..end).map { n ->
         prefix + n.toString().padStart(width, '0') + suffix
     }
-    // Expand further ranges in the suffix (applied after this substitution).
     val result = step.flatMap { expandLinkRanges(it) }
     return if (result.size > maxExpandedLinks) result.take(maxExpandedLinks) else result
 }
@@ -204,26 +307,30 @@ fun DownloadsScreen(
 ) {
     val vm: DownloadsViewModel = viewModel(factory = DownloadsViewModel.Factory(container))
     val tasks by vm.tasks.collectAsStateWithLifecycle()
-    val context = LocalContext.current
+    val intakeItems by vm.intakeItems.collectAsStateWithLifecycle()
     var showAddDialog by remember { mutableStateOf(false) }
     var showExpandHelp by remember { mutableStateOf(false) }
     var draft by remember { mutableStateOf("") }
     var expandLinks by remember { mutableStateOf(false) }
-
-    LaunchedEffect(vm) {
-        vm.addResult.collect { result ->
-            Toast.makeText(
-                context,
-                context.getString(R.string.resources_queued, result.queued),
-                Toast.LENGTH_SHORT
-            ).show()
-        }
-    }
+    var intakeExpanded by remember { mutableStateOf(false) }
 
     Box(modifier = modifier.fillMaxSize()) {
         Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
             Text(stringResource(R.string.nav_downloads), style = MaterialTheme.typography.headlineSmall)
             Spacer(modifier = Modifier.height(12.dp))
+            if (intakeItems.isNotEmpty()) {
+                IntakePanel(
+                    items = intakeItems,
+                    expanded = intakeExpanded,
+                    onToggleExpanded = { intakeExpanded = !intakeExpanded },
+                    onRetryFailed = { vm.retryFailed() },
+                    onClear = {
+                        vm.clearIntake()
+                        intakeExpanded = false
+                    }
+                )
+                Spacer(modifier = Modifier.height(12.dp))
+            }
             if (tasks.isEmpty()) {
                 Text(
                     stringResource(R.string.no_downloads),
@@ -344,6 +451,116 @@ fun DownloadsScreen(
         )
     }
 }
+
+@Composable
+private fun IntakePanel(
+    items: List<IntakeItem>,
+    expanded: Boolean,
+    onToggleExpanded: () -> Unit,
+    onRetryFailed: () -> Unit,
+    onClear: () -> Unit
+) {
+    val stats = remember(items) { intakeStats(items) }
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column(modifier = Modifier.padding(12.dp)) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable(onClick = onToggleExpanded),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = stringResource(R.string.intake_title),
+                        style = MaterialTheme.typography.titleSmall
+                    )
+                    Text(
+                        text = stringResource(
+                            R.string.intake_summary,
+                            stats.checking,
+                            stats.queued,
+                            stats.failed
+                        ),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                Icon(
+                    imageVector = if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                    contentDescription = stringResource(
+                        if (expanded) R.string.collapse else R.string.expand
+                    )
+                )
+            }
+            if (expanded) {
+                Spacer(modifier = Modifier.height(8.dp))
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = 220.dp)
+                        .verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    items.forEach { item ->
+                        IntakeRow(item = item)
+                    }
+                }
+                Spacer(modifier = Modifier.height(4.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End
+                ) {
+                    TextButton(
+                        onClick = onRetryFailed,
+                        enabled = stats.hasFailed
+                    ) {
+                        Text(stringResource(R.string.intake_retry_failed))
+                    }
+                    TextButton(onClick = onClear) {
+                        Text(stringResource(R.string.intake_clear))
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun IntakeRow(item: IntakeItem) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = item.displayName?.takeIf { it.isNotBlank() } ?: item.url,
+            style = MaterialTheme.typography.bodySmall,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f)
+        )
+        Spacer(modifier = Modifier.width(8.dp))
+        Text(
+            text = intakeStatusLabel(item.status),
+            style = MaterialTheme.typography.labelSmall,
+            color = when (item.status) {
+                IntakeStatus.Failed -> MaterialTheme.colorScheme.error
+                IntakeStatus.Queued -> MaterialTheme.colorScheme.primary
+                else -> MaterialTheme.colorScheme.onSurfaceVariant
+            }
+        )
+    }
+}
+
+@Composable
+private fun intakeStatusLabel(status: IntakeStatus): String =
+    stringResource(
+        when (status) {
+            IntakeStatus.Waiting -> R.string.intake_status_waiting
+            IntakeStatus.Probing -> R.string.intake_status_probing
+            IntakeStatus.Queued -> R.string.intake_status_queued
+            IntakeStatus.Failed -> R.string.intake_status_failed
+        }
+    )
 
 @Composable
 private fun DownloadCard(

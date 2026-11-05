@@ -41,6 +41,14 @@
     <string name="add_resources_hint">每行一个网址</string>
     <string name="add">添加</string>
     <string name="resources_queued">已加入 %1$d 个下载任务</string>
+    <string name="intake_title">正在添加资源</string>
+    <string name="intake_summary">%1$d 检查中 · %2$d 已入队 · %3$d 失败</string>
+    <string name="intake_status_waiting">等待</string>
+    <string name="intake_status_probing">检查中</string>
+    <string name="intake_status_queued">已入队</string>
+    <string name="intake_status_failed">失败</string>
+    <string name="intake_retry_failed">重试失败项</string>
+    <string name="intake_clear">清除</string>
     <string name="expand_links">展开链接</string>
     <string name="expand_links_help_cd">链接展开说明</string>
     <string name="expand_links_help_title">链接展开</string>
